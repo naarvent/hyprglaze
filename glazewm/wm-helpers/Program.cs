@@ -49,7 +49,6 @@ static class Native
 {
     public const int GwlStyle = -16;
     public const int WsCaption = 0x00C00000;
-    public const int WsBorder = 0x00800000;
     public const int WsPopup = unchecked((int)0x80000000);
     public const int WsMaximize = 0x01000000;
     public const int SwShowMaximized = 3;

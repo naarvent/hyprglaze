@@ -126,4 +126,4 @@ the global `WebSocket`, and the helper is a single C# file.
 
 ## License
 
-MIT.
+[MIT](LICENSE).

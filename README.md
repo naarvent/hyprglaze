@@ -116,7 +116,8 @@ glazewm/
   glaze-mouse.ahk   Win+drag gestures
   wm-helpers/       C# helper for the parts that need the Win32 window API
 altsnap/
-  AltSnap.ini       Alt+drag, tuned to not fight with the above
+  AltSnap.ini       Alt+drag. An ordinary AltSnap config, unmodified, here so
+                    the split of labour is reproducible
 install.ps1         install and build
 sync.ps1            pull your live config back into the repo
 ```

@@ -29,7 +29,7 @@ const IPC_URL = 'ws://127.0.0.1:6123';
 // Moving costs something: the port is also the address clients use, so it is
 // written to PORT_FILE and clients resolve it from there.
 const BRIDGE_PORTS = [6124, 6125, 6126, 6127];
-const SERVICE = 'glaze-autotiling';
+const SERVICE = 'hyprglaze';
 const PORT_FILE = fileURLToPath(new URL('./bridge-port', import.meta.url));
 
 const EVENTS = ['focus_changed', 'window_managed', 'window_unmanaged', 'workspace_activated'];

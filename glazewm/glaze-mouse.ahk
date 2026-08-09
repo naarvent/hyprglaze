@@ -55,7 +55,7 @@ HttpGet(url) {
 ; A port answering is not enough — it has to be our daemon and not whatever
 ; else happened to grab it.
 IsOurBridge(port) {
-    return InStr(HttpGet("http://127.0.0.1:" . port . "/ping"), '"service":"glaze-autotiling"') > 0
+    return InStr(HttpGet("http://127.0.0.1:" . port . "/ping"), '"service":"hyprglaze"') > 0
 }
 
 ResolveBridge() {

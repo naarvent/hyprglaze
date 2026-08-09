@@ -29,8 +29,8 @@ taskbar fix, everything else still works.
 ## Running it
 
 ```powershell
-git clone https://github.com/<you>/glaze-linuxish.git $env:USERPROFILE\glaze-linuxish
-cd $env:USERPROFILE\glaze-linuxish
+git clone https://github.com/<you>/hyprglaze.git $env:USERPROFILE\hyprglaze
+cd $env:USERPROFILE\hyprglaze
 .\install.ps1 -WhatIf
 .\install.ps1
 ```

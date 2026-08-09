@@ -64,7 +64,7 @@ restarting on a different port mid-session.
 
 | Route | Returns |
 |---|---|
-| `/ping` | `{ok, service, port, pid}` — identifies the daemon, used to resolve the port |
+| `/ping` | `{ok, service: "hyprglaze", port, pid}` — identifies the daemon, used to resolve the port |
 | `/state?x=&y=` | which window is at that screen point, and whether it is tiled |
 | `/cmd?c=` | runs a GlazeWM command verbatim |
 | `/windows?process=` | windows of a process, with their handles |

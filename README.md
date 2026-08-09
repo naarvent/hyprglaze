@@ -1,4 +1,4 @@
-# glaze-linuxish
+# hyprglaze
 
 A Windows 11 desktop that behaves like a Linux tiling window manager, built on
 [GlazeWM](https://github.com/glzr-io/glazewm) and [AltSnap](https://github.com/RamonUnch/AltSnap).
@@ -61,8 +61,8 @@ winget install OpenJS.NodeJS            # Node 22 or newer
 winget install AutoHotkey.AutoHotkey    # v2, not v1
 winget install Microsoft.DotNet.SDK.10  # optional, for the taskbar fix
 
-git clone https://github.com/<you>/glaze-linuxish.git $env:USERPROFILE\glaze-linuxish
-cd $env:USERPROFILE\glaze-linuxish
+git clone https://github.com/<you>/hyprglaze.git $env:USERPROFILE\hyprglaze
+cd $env:USERPROFILE\hyprglaze
 .\install.ps1 -WhatIf   # see what it would do
 .\install.ps1
 ```

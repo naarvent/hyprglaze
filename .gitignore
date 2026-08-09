@@ -1,0 +1,15 @@
+# Backups install.ps1 leaves behind
+*.bak
+
+# Runtime logs
+*.log
+
+# Build output of the C# helper. install.ps1 rebuilds it; the binary is not
+# versioned so nobody has to trust a committed executable.
+bin/
+obj/
+*.exe
+
+# Windows junk
+Thumbs.db
+desktop.ini

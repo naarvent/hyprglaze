@@ -4,6 +4,9 @@
 # Runtime logs
 *.log
 
+# Written by the daemon at startup with the port it settled on
+bridge-port
+
 # Build output of the C# helper. install.ps1 rebuilds it; the binary is not
 # versioned so nobody has to trust a committed executable.
 bin/

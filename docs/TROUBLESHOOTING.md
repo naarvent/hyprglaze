@@ -12,8 +12,18 @@ Get-Content ~\.glzr\glazewm\errors.log -Tail 20
 # What the daemon has been doing.
 Get-Content ~\.glzr\glazewm\autotiling.log -Tail 30
 
-# Is the daemon alive? This answers only if it is.
-Invoke-RestMethod http://127.0.0.1:6124/focused-workspace
+# Is the daemon alive, and where? /ping answers only if it is really ours.
+Invoke-RestMethod http://127.0.0.1:6124/ping
+```
+
+If that times out, the bridge may have moved: something else holding 6124 makes
+the daemon step to the next port. Where it landed:
+
+```powershell
+Get-Content ~\.glzr\glazewm\bridge-port
+6124, 6125, 6126, 6127 | ForEach-Object {
+    try { Invoke-RestMethod "http://127.0.0.1:$_/ping" -TimeoutSec 1 } catch {}
+}
 ```
 
 ## Nothing tiles the way it should
@@ -30,13 +40,19 @@ node ~\.glzr\glazewm\autotiling.mjs
 Run in the foreground it prints the same lines it writes to the log, and any
 startup error goes to the console instead of vanishing.
 
-If it says `another instance is already running, exiting`, one is up. To find and
-stop it:
+If it says `another instance is already running, exiting`, one really is up —
+the daemon verifies that by asking the port who it is, so the message is not a
+guess. To find and stop it:
 
 ```powershell
-netstat -ano | Select-String '127.0.0.1:6124'   # the last column is the PID
+netstat -ano | Select-String '127.0.0.1:612'   # the last column is the PID
 Stop-Process -Id <pid>
 ```
+
+A different message, `port 6124 is taken by something that is not us`, means an
+unrelated program holds it and the daemon moved on. That is not a failure, but
+if all four candidates are taken it gives up with
+`no free port in 6124, 6125, 6126, 6127`.
 
 ## The mouse gestures do nothing
 

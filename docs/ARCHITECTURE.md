@@ -30,14 +30,41 @@ GlazeWM speaks WebSocket. AutoHotkey v2 has no sockets, but it does have
 server on port **6124** and translates: scripts talk to it over HTTP, it talks to
 GlazeWM over WebSocket.
 
-That port doubles as a **single-instance mutex**. If a copy of the daemon is
-already running the `listen` fails, and the second one exits instead of sending
-contradictory commands.
+### The port is also the lock
+
+Only one process can listen on a port, which makes the bind a free
+single-instance lock — better than a PID file, because acquiring it is atomic
+(no gap between checking and claiming) and the OS releases it even if the
+process is killed outright.
+
+The subtlety is that a failed bind means *someone is here*, not *another copy of
+me is here*. Getting that wrong is a silent failure: if any unrelated program
+happened to hold 6124, the daemon would exit reporting "another instance is
+already running" and you would lose tiling, mouse gestures and the taskbar fix
+with nothing obviously broken to look at.
+
+So a taken port is **probed**:
+
+| Probe result | Meaning | What happens |
+|---|---|---|
+| answers `/ping` as this service | genuinely a second copy | this process exits, the lock did its job |
+| anything else | a stranger holds the port | move to the next candidate |
+
+Candidates are 6124 to 6127.
+
+Moving has a cost: the port is also the **address**, and a client still asking
+6124 would be talking to the stranger. So the daemon writes the port it settled
+on to `~\.glzr\glazewm\bridge-port`, and clients resolve it — that file first,
+then probing `/ping` on each candidate if the file is missing or stale. Both
+`glaze-mouse.ahk` and any script using the bridge do this, and re-resolve
+automatically if a request comes back empty, which also covers the daemon
+restarting on a different port mid-session.
 
 ### Endpoints
 
 | Route | Returns |
 |---|---|
+| `/ping` | `{ok, service, port, pid}` — identifies the daemon, used to resolve the port |
 | `/state?x=&y=` | which window is at that screen point, and whether it is tiled |
 | `/cmd?c=` | runs a GlazeWM command verbatim |
 | `/windows?process=` | windows of a process, with their handles |
@@ -128,5 +155,6 @@ Everything lives in `~\.glzr\glazewm\`:
 | `glaze-mouse.ahk` | mouse gestures |
 | `wm-helpers.exe` | native helper, built by `install.ps1` |
 | `wm-helpers/` | its source |
+| `bridge-port` | which port the bridge ended up on; written at startup, removed on exit |
 | `autotiling.log` | daemon log, self-truncating at 512 KB |
 | `errors.log` | GlazeWM's own complaints — check this first |

@@ -93,8 +93,12 @@ At the top of `glaze-mouse.ahk`:
 | `DEBUG_ENABLED` | false | writes `glaze-mouse.log` on every gesture |
 
 Turn `DEBUG_ENABLED` on when a gesture does nothing: the log records the point,
-the bridge response, and whether the window was tiled. An empty response means
-the daemon is not running.
+the bridge response, which port it resolved to, and whether the window was tiled.
+An empty response after a failed re-resolve means the daemon is not running.
+
+The script does not assume the bridge is on 6124. It reads `bridge-port`, falls
+back to probing `/ping` on 6124–6127, and re-resolves automatically if a request
+comes back empty — so a daemon restart on another port fixes itself.
 
 > **AutoHotkey v2 trap**
 > Identifiers are **case-insensitive**, so a variable called `DEBUG` collides

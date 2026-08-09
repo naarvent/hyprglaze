@@ -17,10 +17,20 @@
 
 const IPC_URL = 'ws://127.0.0.1:6123';
 
-// Our own port. It doubles as a single-instance mutex — the bind fails when a
-// copy is already running — and as an HTTP bridge for glaze-mouse.ahk, because
-// AutoHotkey has no sockets but does speak HTTP through WinHttpRequest.
-const BRIDGE_PORT = 6124;
+// The bridge is an HTTP server for glaze-mouse.ahk, which has no sockets but
+// does speak HTTP through WinHttpRequest. Its port doubles as a single-instance
+// lock, because only one process can listen on a port.
+//
+// Using it as a lock needs care: a failed bind means "someone is here", not
+// "another copy of me is here". So a taken port is probed. If it answers /ping
+// as this service, it really is a second copy and this one exits. If it is a
+// stranger, the bridge moves to the next port instead of dying silently.
+//
+// Moving costs something: the port is also the address clients use, so it is
+// written to PORT_FILE and clients resolve it from there.
+const BRIDGE_PORTS = [6124, 6125, 6126, 6127];
+const SERVICE = 'glaze-autotiling';
+const PORT_FILE = fileURLToPath(new URL('./bridge-port', import.meta.url));
 
 const EVENTS = ['focus_changed', 'window_managed', 'window_unmanaged', 'workspace_activated'];
 const MAX_RETRIES = 10; // roughly two minutes of backoff before giving up
@@ -31,7 +41,7 @@ const PLACE_GAP = 6; // px between placed windows, matches inner_gap
 const LOG_PATH = new URL('./autotiling.log', import.meta.url);
 const MAX_LOG_BYTES = 512 * 1024;
 
-import { appendFileSync, existsSync, statSync, truncateSync } from 'node:fs';
+import { appendFileSync, existsSync, statSync, truncateSync, writeFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -74,71 +84,110 @@ function log(line) {
   }
 }
 
-/**
- * Starts the HTTP bridge. Resolves false when the port is already taken, which
- * is how we learn another instance is running and this one is redundant.
- *
- *   GET /state?x=&y=    which window sits at that screen point
- *   GET /windows?process=   windows of a process, with their handles
- *   GET /focused-workspace  name of the workspace you are on
- *   GET /place?...      float one window into a fraction of a workspace
- *   GET /cmd?c=         run a GlazeWM command verbatim
- */
-function openBridge(client) {
-  return new Promise((resolve) => {
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url, 'http://127.0.0.1');
-      res.setHeader('Content-Type', 'application/json');
-
-      try {
-        if (url.pathname === '/state') {
-          const x = Number(url.searchParams.get('x'));
-          const y = Number(url.searchParams.get('y'));
-          res.end(JSON.stringify(await client.windowAt(x, y)));
-          return;
-        }
-        if (url.pathname === '/focused-workspace') {
-          res.end(JSON.stringify(await client.focusedWorkspace()));
-          return;
-        }
-        if (url.pathname === '/windows') {
-          res.end(JSON.stringify(await client.windowsOf(url.searchParams.get('process'))));
-          return;
-        }
-        if (url.pathname === '/place') {
-          const num = (key) => Number(url.searchParams.get(key));
-          res.end(
-            JSON.stringify(
-              await client.placeWindow({
-                handle: url.searchParams.get('handle'),
-                workspace: url.searchParams.get('ws'),
-                fx: num('fx'),
-                fy: num('fy'),
-                fWidth: num('fw'),
-                fHeight: num('fh'),
-                fit: url.searchParams.get('fit'),
-              }),
-            ),
-          );
-          return;
-        }
-        if (url.pathname === '/cmd') {
-          const command = url.searchParams.get('c') ?? '';
-          await client.send(`command ${command}`);
-          res.end('{"ok":true}');
-          return;
-        }
-        res.statusCode = 404;
-        res.end('{"error":"unknown route"}');
-      } catch (err) {
-        res.statusCode = 500;
-        res.end(JSON.stringify({ error: String(err) }));
-      }
+/** Is whatever holds this port one of us? */
+async function isOurBridge(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/ping`, {
+      signal: AbortSignal.timeout(400),
     });
+    return (await res.json())?.service === SERVICE;
+  } catch {
+    return false;
+  }
+}
 
-    server.once('error', () => resolve(false));
-    server.once('listening', () => resolve(true));
-    server.listen(BRIDGE_PORT, '127.0.0.1');
+/**
+ * Tries to own one port. Returns 'listening', 'ours' (a real second instance,
+ * so this process should stand down) or 'stranger' (someone else's server).
+ */
+function listenOn(client, port) {
+  return new Promise((resolve) => {
+    const server = buildServer(client, port);
+    server.once('error', async () => {
+      resolve((await isOurBridge(port)) ? 'ours' : 'stranger');
+    });
+    server.once('listening', () => resolve('listening'));
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+/**
+ * Walks the candidate ports. Returns the one we ended up on, or null when this
+ * process should exit — with `reason` explaining which of the two cases it was.
+ */
+async function openBridge(client) {
+  for (const port of BRIDGE_PORTS) {
+    const outcome = await listenOn(client, port);
+    if (outcome === 'listening') return { port };
+    if (outcome === 'ours') return { reason: 'another instance is already running' };
+    log(`port ${port} is taken by something that is not us, trying the next one`);
+  }
+  return { reason: `no free port in ${BRIDGE_PORTS.join(', ')}` };
+}
+
+/**
+ * The bridge itself.
+ *
+ *   GET /ping              identifies this service, used to resolve the port
+ *   GET /state?x=&y=       which window sits at that screen point
+ *   GET /windows?process=  windows of a process, with their handles
+ *   GET /focused-workspace name of the workspace you are on
+ *   GET /place?...         float one window into a fraction of a workspace
+ *   GET /cmd?c=            run a GlazeWM command verbatim
+ */
+function buildServer(client, port) {
+  return createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    res.setHeader('Content-Type', 'application/json');
+
+    try {
+      if (url.pathname === '/ping') {
+        res.end(JSON.stringify({ ok: true, service: SERVICE, port, pid: process.pid }));
+        return;
+      }
+      if (url.pathname === '/state') {
+        const x = Number(url.searchParams.get('x'));
+        const y = Number(url.searchParams.get('y'));
+        res.end(JSON.stringify(await client.windowAt(x, y)));
+        return;
+      }
+      if (url.pathname === '/focused-workspace') {
+        res.end(JSON.stringify(await client.focusedWorkspace()));
+        return;
+      }
+      if (url.pathname === '/windows') {
+        res.end(JSON.stringify(await client.windowsOf(url.searchParams.get('process'))));
+        return;
+      }
+      if (url.pathname === '/place') {
+        const num = (key) => Number(url.searchParams.get(key));
+        res.end(
+          JSON.stringify(
+            await client.placeWindow({
+              handle: url.searchParams.get('handle'),
+              workspace: url.searchParams.get('ws'),
+              fx: num('fx'),
+              fy: num('fy'),
+              fWidth: num('fw'),
+              fHeight: num('fh'),
+              fit: url.searchParams.get('fit'),
+            }),
+          ),
+        );
+        return;
+      }
+      if (url.pathname === '/cmd') {
+        const command = url.searchParams.get('c') ?? '';
+        await client.send(`command ${command}`);
+        res.end('{"ok":true}');
+        return;
+      }
+      res.statusCode = 404;
+      res.end('{"error":"unknown route"}');
+    } catch (err) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: String(err) }));
+    }
   });
 }
 
@@ -470,13 +519,29 @@ async function watchWorkspaceChange() {
   }, SETTLE_MS);
 }
 
-if (!(await openBridge(client))) {
-  log('another instance is already running, exiting');
+const bridge = await openBridge(client);
+if (!bridge.port) {
+  log(`${bridge.reason}, exiting`);
   process.exit(0);
 }
 
+// Clients read this to find the bridge, since it does not always land on the
+// first port. They fall back to probing the candidates if the file is stale.
+try {
+  writeFileSync(PORT_FILE, String(bridge.port));
+  process.on('exit', () => {
+    try {
+      rmSync(PORT_FILE, { force: true });
+    } catch {
+      // Best effort: a stale file is survivable, clients re-probe.
+    }
+  });
+} catch {
+  log(`could not write ${PORT_FILE}, clients will have to probe for the port`);
+}
+
 log('--- autotiling started ---');
-log(`HTTP bridge listening on 127.0.0.1:${BRIDGE_PORT}`);
+log(`HTTP bridge listening on 127.0.0.1:${bridge.port}`);
 if (existsSync(HELPER)) {
   log('wm-helpers found: fullscreen-game taskbar fix active');
 } else {

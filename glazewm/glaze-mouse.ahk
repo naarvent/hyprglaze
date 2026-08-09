@@ -8,12 +8,19 @@
 ; GlazeWM owns the geometry of tiled windows, so moving one with SetWindowPos
 ; achieves nothing: the WM puts it straight back. Those have to go through the
 ; tree instead, by sending commands to the HTTP bridge autotiling.mjs runs on
-; 127.0.0.1:6124.
+; localhost.
 ;
 ; Floating windows belong to nobody, so those are moved directly.
 ; AltSnap keeps Alt for anyone who wants its more advanced snapping.
 
-BRIDGE := "http://127.0.0.1:6124"
+; The bridge is not always on the first port: if something else already holds
+; it, the daemon moves along and writes where it landed to `bridge-port`. So the
+; address is resolved rather than assumed — from that file first, then by asking
+; each candidate who it is.
+BRIDGE_PORTS := [6124, 6125, 6126, 6127]
+BRIDGE_PORT_FILE := A_ScriptDir . "\bridge-port"
+BRIDGE := ""           ; resolved on first use
+
 DRAG_THRESHOLD := 6    ; px to travel before it counts as a drag
 RESIZE_STEP := 4       ; % change per step
 PX_PER_STEP := 28      ; px of mouse travel worth one resize step
@@ -33,17 +40,60 @@ Debug("=== glaze-mouse started ===")
 
 ; ------------------------------------------------------------------ helpers
 
-Query(route) {
-    global BRIDGE
+HttpGet(url) {
     try {
         request := ComObject("WinHttp.WinHttpRequest.5.1")
-        request.Open("GET", BRIDGE . route, false)
+        request.Open("GET", url, false)
         request.SetTimeouts(200, 200, 200, 600)
         request.Send()
         return request.ResponseText
     } catch {
-        return ""   ; daemon down: drop the gesture rather than break anything
+        return ""
     }
+}
+
+; A port answering is not enough — it has to be our daemon and not whatever
+; else happened to grab it.
+IsOurBridge(port) {
+    return InStr(HttpGet("http://127.0.0.1:" . port . "/ping"), '"service":"glaze-autotiling"') > 0
+}
+
+ResolveBridge() {
+    global BRIDGE, BRIDGE_PORTS, BRIDGE_PORT_FILE
+
+    saved := ""
+    try saved := Trim(FileRead(BRIDGE_PORT_FILE))
+    if (saved != "" && IsOurBridge(saved)) {
+        BRIDGE := "http://127.0.0.1:" . saved
+        Debug("bridge resolved from bridge-port: " . BRIDGE)
+        return true
+    }
+
+    for port in BRIDGE_PORTS {
+        if (IsOurBridge(port)) {
+            BRIDGE := "http://127.0.0.1:" . port
+            Debug("bridge found by probing: " . BRIDGE)
+            return true
+        }
+    }
+
+    BRIDGE := ""
+    Debug("no bridge found on " . BRIDGE_PORTS.Length . " candidate ports")
+    return false
+}
+
+Query(route) {
+    global BRIDGE
+    if (BRIDGE != "") {
+        answer := HttpGet(BRIDGE . route)
+        if (answer != "")
+            return answer
+    }
+    ; Empty either because we never resolved, or because the daemon restarted
+    ; somewhere else. Worth one re-resolve before giving up on the gesture.
+    if (!ResolveBridge())
+        return ""
+    return HttpGet(BRIDGE . route)
 }
 
 ; Pulls one field out of a flat JSON object. The bridge responses are flat and
@@ -56,7 +106,9 @@ Field(json, key) {
     return ""
 }
 
-Send(command) {
+; Not called Send(): AutoHotkey v2 lets a user function shadow the built-in of
+; that name, and a reader would reasonably assume the built-in is what runs.
+SendCommand(command) {
     Query("/cmd?c=" . UriEncode(command))
 }
 
@@ -117,7 +169,7 @@ StateUnderCursor() {
     direction := Abs(dx) > Abs(dy)
         ? (dx > 0 ? "right" : "left")
         : (dy > 0 ? "down" : "up")
-    Send("--id " . id . " move --direction " . direction)
+    SendCommand("--id " . id . " move --direction " . direction)
 }
 
 MoveFloating(id, startX, startY) {
@@ -167,12 +219,12 @@ MoveFloating(id, startX, startY) {
 
         while (appliedX != wantX) {
             step := (wantX > appliedX) ? 1 : -1
-            Send("--id " . id . " resize --width " . (step > 0 ? "+" : "-") . RESIZE_STEP . "%")
+            SendCommand("--id " . id . " resize --width " . (step > 0 ? "+" : "-") . RESIZE_STEP . "%")
             appliedX += step
         }
         while (appliedY != wantY) {
             step := (wantY > appliedY) ? 1 : -1
-            Send("--id " . id . " resize --height " . (step > 0 ? "+" : "-") . RESIZE_STEP . "%")
+            SendCommand("--id " . id . " resize --height " . (step > 0 ? "+" : "-") . RESIZE_STEP . "%")
             appliedY += step
         }
         Sleep(16)

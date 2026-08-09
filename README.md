@@ -16,6 +16,43 @@ tripping me up after moving over from Hyprland, none of which GlazeWM ships:
 New windows also open on whatever monitor and workspace the mouse is on, and
 focus follows the cursor — no click needed.
 
+## Nothing here is patched
+
+No fork of GlazeWM, no patched binary, no injected DLL. GlazeWM is the stock
+build from winget and AltSnap runs its own untouched config. Everything above is
+a layer on top, driven through GlazeWM's documented IPC — a WebSocket on
+`127.0.0.1:6123` that accepts unelevated connections even though the WM itself
+runs elevated.
+
+That is what makes each piece possible without touching the source:
+
+- **BSP layout.** GlazeWM inserts every new window as a sibling of the focused
+  one, following the parent container's tiling direction — and that direction is
+  settable at runtime. Set it from the shape of the focused window *before* the
+  next window arrives and the screen partitions binarily. Same trick as sway's
+  `autotiling` script.
+- **Dragging a tiled window.** AltSnap moves windows with `SetWindowPos`, which
+  a tiling WM simply undoes. But a tiled window's position does not live on the
+  screen, it lives **in the tree** — so the drag is translated into
+  `move --direction` and `resize ±%` commands instead of pixels.
+- **Coexisting with AltSnap** is a division of labour rather than a truce.
+  Floating windows have no owner, so `SetWindowPos` works and AltSnap keeps
+  them on `Alt`. Tiled windows go through the tree, on `Win`. The mouse script
+  asks what is under the cursor and picks a lane.
+- **The taskbar fix** is the one place that calls Win32 directly, and even then
+  it is a single `SetWindowPos` on a window we do not own, purely to manufacture
+  a state transition the shell is watching for.
+- **Following a window to its workspace** is two commands chained in the YAML.
+  No code at all.
+
+The glue is an HTTP bridge on port 6124: AutoHotkey v2 has no sockets but does
+have `WinHttpRequest`, so the daemon translates HTTP into WebSocket. That port
+doubles as a single-instance mutex.
+
+The practical payoff is that GlazeWM updates cannot break this — there is no
+patch to rebase and no upstream change to wait for — and nothing runs elevated
+except GlazeWM, which already did. Details in [Architecture](docs/ARCHITECTURE.md).
+
 ## Install
 
 ```powershell

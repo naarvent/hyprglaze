@@ -62,9 +62,17 @@ is no reason to involve the WM.
 
 ## Living with AltSnap
 
-They coexist because they use different modifiers: this script is on `Win`,
-AltSnap on `Alt`. AltSnap also disables itself as soon as it sees an A–Z key, so
+The two do not need reconciling, they need a division of labour, and it falls
+out of the previous section: floating windows have no owner, so `SetWindowPos`
+works and AltSnap handles them fine. Tiled windows have to go through the tree.
+The script asks the bridge which kind is under the cursor and picks a lane.
+
+On top of that they use different modifiers — this script on `Win`, AltSnap on
+`Alt` — and AltSnap disables itself as soon as it sees an A–Z key, so GlazeWM's
 `Alt`+letter bindings keep working.
+
+Nothing about AltSnap is modified for this. The `AltSnap.ini` here is an ordinary
+config, included so the split is reproducible rather than because it was tuned.
 
 The shipped `AltSnap.ini` has `Hotkeys=A4 A5` (both Alt keys), left button to
 move and right button to resize — the same layout as the `Win` gestures, so the

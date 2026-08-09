@@ -2,7 +2,9 @@
 
 [← back to the README](../README.md)
 
-Four processes, three of them small.
+Four processes, three of them small — and no modifications to any of the two
+programs involved. GlazeWM is the stock build; the shipped `AltSnap.ini` is an
+ordinary AltSnap config. Everything is driven from outside through the IPC.
 
 ```
 GlazeWM (elevated)

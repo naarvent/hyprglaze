@@ -29,7 +29,7 @@ taskbar fix, everything else still works.
 ## Running it
 
 ```powershell
-git clone https://github.com/<you>/hyprglaze.git $env:USERPROFILE\hyprglaze
+git clone https://github.com/naarvent/hyprglaze.git $env:USERPROFILE\hyprglaze
 cd $env:USERPROFILE\hyprglaze
 .\install.ps1 -WhatIf
 .\install.ps1

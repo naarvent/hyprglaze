@@ -61,7 +61,7 @@ winget install OpenJS.NodeJS            # Node 22 or newer
 winget install AutoHotkey.AutoHotkey    # v2, not v1
 winget install Microsoft.DotNet.SDK.10  # optional, for the taskbar fix
 
-git clone https://github.com/<you>/hyprglaze.git $env:USERPROFILE\hyprglaze
+git clone https://github.com/naarvent/hyprglaze.git $env:USERPROFILE\hyprglaze
 cd $env:USERPROFILE\hyprglaze
 .\install.ps1 -WhatIf   # see what it would do
 .\install.ps1
